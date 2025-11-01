@@ -1,27 +1,54 @@
-FROM debian:11-slim
+# Stage 1: Build Python from source
+FROM debian:11-slim AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHON_VERSION=3.10.13
 
-# Step 0: Certificates + toolchain
+# Install build dependencies and compile Python
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates wget curl xz-utils \
+    ca-certificates wget xz-utils \
     build-essential libssl-dev zlib1g-dev libncurses5-dev libgdbm-dev \
     libnss3-dev libsqlite3-dev libreadline-dev libffi-dev tk-dev liblzma-dev \
- && update-ca-certificates && rm -rf /var/lib/apt/lists/*
-
-# Step 1: Build Python
-RUN wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tar.xz \
- && tar -xvf Python-${PYTHON_VERSION}.tar.xz \
+ && wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tar.xz \
+ && tar -xf Python-${PYTHON_VERSION}.tar.xz \
  && cd Python-${PYTHON_VERSION} \
- && ./configure --enable-optimizations --with-ensurepip=install \
+ && ./configure --enable-optimizations --with-ensurepip=install --prefix=/opt/python \
  && make -j"$(nproc)" && make install \
- && cd / && rm -rf Python-${PYTHON_VERSION}*
+ && cd / && rm -rf Python-${PYTHON_VERSION}* \
+ && rm -rf /var/lib/apt/lists/*
 
-# Step 2: App/system deps
+# Stage 2: Runtime image
+FROM debian:11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Copy compiled Python from builder stage
+COPY --from=builder /opt/python /opt/python
+
+# Set Python in PATH
+ENV PATH="/opt/python/bin:$PATH"
+
+# Install only runtime dependencies in single layer
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    aria2 megatools p7zip-full ffmpeg libmagic-dev procps git\
+    ca-certificates \
+    aria2 \
+    megatools \
+    p7zip-full \
+    ffmpeg \
+    libmagic1 \
+    procps \
+    git \
     qbittorrent-nox=4.2.5-0.1 \
+    # Runtime libraries for Python
+    libssl1.1 \
+    zlib1g \
+    libncurses5 \
+    libgdbm6 \
+    libnss3 \
+    libsqlite3-0 \
+    libreadline8 \
+    libffi7 \
+    liblzma5 \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app
