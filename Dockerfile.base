@@ -4,7 +4,6 @@ FROM debian:11-slim AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHON_VERSION=3.10.13
 
-# Install build dependencies and compile Python
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates wget xz-utils \
     build-essential libssl-dev zlib1g-dev libncurses5-dev libgdbm-dev \
@@ -22,13 +21,10 @@ FROM debian:11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Copy compiled Python from builder stage
 COPY --from=builder /opt/python /opt/python
-
-# Set Python in PATH
 ENV PATH="/opt/python/bin:$PATH"
 
-# Install only runtime dependencies in single layer
+# Install app/system deps + runtime Python libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     aria2 \
@@ -39,7 +35,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     git \
     qbittorrent-nox=4.2.5-0.1 \
-    # Runtime libraries for Python
     libssl1.1 \
     zlib1g \
     libncurses5 \
@@ -49,9 +44,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libreadline8 \
     libffi7 \
     liblzma5 \
+    # Temporarily install build tools for pip
+    gcc libc6-dev \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app
 
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Install Python dependencies, then uninstall gcc and build deps
+RUN pip3 install --no-cache-dir -r requirements.txt \
+ && apt-get purge -y --auto-remove gcc libc6-dev \
+ && rm -rf /var/lib/apt/lists/*
+
